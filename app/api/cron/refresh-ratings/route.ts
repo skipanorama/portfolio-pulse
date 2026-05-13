@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       distinct: ['yahooSymbol'],
     });
 
-    const symbols = holdings.map(h => h.yahooSymbol);
+    const symbols = holdings.map((h: { yahooSymbol: string }) => h.yahooSymbol);
     const ratingsMap = await fetchBatchRatings(symbols, 5);
 
     let updated = 0;
