@@ -1,5 +1,7 @@
-import yahooFinance from 'yahoo-finance2';
+import YahooFinance from 'yahoo-finance2';
 import type { AnalystRating } from '@/types';
+
+const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
 
 export async function fetchAnalystRating(yahooSymbol: string): Promise<Partial<AnalystRating> | null> {
   try {
