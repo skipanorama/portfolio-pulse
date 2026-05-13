@@ -1,0 +1,22 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/refresh-ratings",
+      "schedule": "0 14 * * 1-5"
+    }
+  ],
+  "functions": {
+    "app/api/portfolios/[id]/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/ratings/refresh/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/import/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/refresh-ratings/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

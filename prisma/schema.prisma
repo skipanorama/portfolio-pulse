@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Portfolio {
+  id          Int       @id @default(autoincrement())
+  name        String
+  owner       String
+  broker      String
+  accountType String    @map("account_type")
+  accountId   String?   @map("account_id")
+  currency    String    @default("CAD")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  holdings    Holding[]
+
+  @@map("portfolios")
+}
+
+model Holding {
+  id              Int       @id @default(autoincrement())
+  portfolioId     Int       @map("portfolio_id")
+  symbol          String
+  yahooSymbol     String    @map("yahoo_symbol")
+  name            String
+  quantity        Float
+  currency        String    @default("CAD")
+  avgCost         Float?    @map("avg_cost")
+  bookValue       Float?    @map("book_value")
+  marketPrice     Float?    @map("market_price")
+  marketValue     Float?    @map("market_value")
+  unrealizedGain  Float?    @map("unrealized_gain")
+  assetType       String    @default("stock") @map("asset_type")
+  exchange        String?
+  lastPriceUpdate DateTime? @map("last_price_update")
+  portfolio       Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@map("holdings")
+}
+
+model AnalystRating {
+  id               Int      @id @default(autoincrement())
+  yahooSymbol      String   @unique @map("yahoo_symbol")
+  rating           String?
+  ratingScore      Float?   @map("rating_score")
+  strongBuyCount   Int?     @map("strong_buy_count")
+  buyCount         Int?     @map("buy_count")
+  holdCount        Int?     @map("hold_count")
+  sellCount        Int?     @map("sell_count")
+  strongSellCount  Int?     @map("strong_sell_count")
+  targetPrice      Float?   @map("target_price")
+  numberOfAnalysts Int?     @map("number_of_analysts")
+  lastUpdated      DateTime @default(now()) @map("last_updated")
+
+  @@map("analyst_ratings")
+}
