@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/refresh-ratings",
       "schedule": "0 14 * * 1-5"
+    },
+    {
+      "path": "/api/cron/refresh-prices",
+      "schedule": "15 21 * * 1-5"
     }
   ],
   "functions": {
@@ -12,10 +16,16 @@
     "app/api/ratings/refresh/route.ts": {
       "maxDuration": 60
     },
+    "app/api/prices/refresh/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/import/route.ts": {
       "maxDuration": 60
     },
     "app/api/cron/refresh-ratings/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/refresh-prices/route.ts": {
       "maxDuration": 60
     }
   }

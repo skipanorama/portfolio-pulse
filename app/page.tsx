@@ -76,15 +76,23 @@ async function getDashboardData() {
   const worstPerformer = sorted[sorted.length - 1] ?? null;
   const biggestHolding = [...allHoldings].sort((a, b) => (b.marketValue ?? 0) - (a.marketValue ?? 0))[0] ?? null;
 
-  const lastUpdated = ratings.length > 0
+  const lastRatingsUpdate = ratings.length > 0
     ? new Date(Math.max(...ratings.map(r => r.lastUpdated.getTime())))
     : null;
+
+  const lastPriceUpdate = (() => {
+    const dates = allHoldings
+      .map(h => h.lastPriceUpdate)
+      .filter((d): d is Date => d != null);
+    return dates.length > 0 ? new Date(Math.max(...dates.map(d => d.getTime()))) : null;
+  })();
 
   return {
     portfolios: enrichedPortfolios,
     totalMV, totalBook, totalGain, totalGainPct,
     byRating, bestPerformer, worstPerformer, biggestHolding,
-    lastUpdated,
+    lastRatingsUpdate,
+    lastPriceUpdate,
     totalHoldings: allHoldings.length,
   };
 }
@@ -96,6 +104,9 @@ export default async function DashboardPage() {
   const isGain = data.totalGain >= 0;
   const totalRatings = Object.values(data.byRating).reduce((s, n) => s + n, 0);
 
+  const fmtTime = (d: Date) =>
+    d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
   return (
     <div className="max-w-7xl mx-auto space-y-8">
       {/* Header */}
@@ -104,20 +115,34 @@ export default async function DashboardPage() {
           <h1 className="text-3xl font-bold text-white tracking-tight">Dashboard</h1>
           <p className="text-slate-500 text-sm mt-1">
             {data.portfolios.length} portfolios · {data.totalHoldings} holdings
-            {data.lastUpdated && (
-              <span> · Ratings updated {data.lastUpdated.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+            {data.lastPriceUpdate && (
+              <span> · Prices: {fmtTime(data.lastPriceUpdate)}</span>
+            )}
+            {data.lastRatingsUpdate && (
+              <span> · Ratings: {fmtTime(data.lastRatingsUpdate)}</span>
             )}
           </p>
         </div>
-        <form action="/api/ratings/refresh" method="POST">
-          <button
-            type="submit"
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-300 bg-blue-600/10 border border-blue-500/20 rounded-lg hover:bg-blue-600/20 transition-colors"
-          >
-            <RefreshCw size={14} />
-            Refresh Ratings
-          </button>
-        </form>
+        <div className="flex items-center gap-2">
+          <form action="/api/prices/refresh" method="POST">
+            <button
+              type="submit"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-300 bg-emerald-600/10 border border-emerald-500/20 rounded-lg hover:bg-emerald-600/20 transition-colors"
+            >
+              <RefreshCw size={14} />
+              Refresh Prices
+            </button>
+          </form>
+          <form action="/api/ratings/refresh" method="POST">
+            <button
+              type="submit"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-300 bg-blue-600/10 border border-blue-500/20 rounded-lg hover:bg-blue-600/20 transition-colors"
+            >
+              <RefreshCw size={14} />
+              Refresh Ratings
+            </button>
+          </form>
+        </div>
       </div>
 
       {/* Hero stats */}
