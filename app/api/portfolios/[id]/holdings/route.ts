@@ -17,14 +17,14 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
       orderBy: [{ marketValue: 'desc' }],
     });
 
-    const yahooSymbols = [...new Set(holdings.map(h => h.yahooSymbol))];
+    const yahooSymbols = [...new Set(holdings.map((h: { yahooSymbol: string }) => h.yahooSymbol))];
     const ratings = await prisma.analystRating.findMany({
       where: { yahooSymbol: { in: yahooSymbols } },
     });
-    const ratingMap = new Map(ratings.map(r => [r.yahooSymbol, r]));
+    const ratingMap = new Map(ratings.map((r: { yahooSymbol: string }) => [r.yahooSymbol, r]));
 
     return NextResponse.json(
-      holdings.map(h => ({ ...h, rating: ratingMap.get(h.yahooSymbol) ?? null }))
+      holdings.map((h: { yahooSymbol: string }) => ({ ...h, rating: ratingMap.get(h.yahooSymbol) ?? null }))
     );
   } catch (err) {
     console.error(err);
