@@ -5,7 +5,9 @@ const Y_TOLERANCE = 2;
 export async function extractPdfText(file: File): Promise<string> {
   // Loaded dynamically so this browser-only module (it references DOM APIs
   // like DOMMatrix at import time) never gets pulled into server rendering.
-  const pdfjsLib = await import('pdfjs-dist');
+  // The legacy build is used (rather than the default modern build) for
+  // compatibility with older Safari/iOS versions.
+  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
   pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
   const arrayBuffer = await file.arrayBuffer();
