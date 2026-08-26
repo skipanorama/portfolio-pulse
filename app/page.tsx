@@ -1,10 +1,11 @@
 export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
-import { TrendingUp, TrendingDown, RefreshCw, Star, Award, BarChart2, Briefcase, ArrowUpRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Star, Award, BarChart2, Briefcase, ArrowUpRight } from 'lucide-react';
 import { prisma } from '@/lib/db';
 import { formatCurrency, formatPercent, ratingToLabel, ratingColor, ratingDotColor, cn } from '@/lib/utils';
 import { RatingBadge } from '@/components/ratings/rating-badge';
+import { RefreshButtons } from '@/components/dashboard/refresh-buttons';
 import type { RatingLabel } from '@/types';
 
 async function getDashboardData() {
@@ -123,26 +124,7 @@ export default async function DashboardPage() {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <form action="/api/prices/refresh" method="POST">
-            <button
-              type="submit"
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-300 bg-emerald-600/10 border border-emerald-500/20 rounded-lg hover:bg-emerald-600/20 transition-colors"
-            >
-              <RefreshCw size={14} />
-              Refresh Prices
-            </button>
-          </form>
-          <form action="/api/ratings/refresh" method="POST">
-            <button
-              type="submit"
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-300 bg-blue-600/10 border border-blue-500/20 rounded-lg hover:bg-blue-600/20 transition-colors"
-            >
-              <RefreshCw size={14} />
-              Refresh Ratings
-            </button>
-          </form>
-        </div>
+        <RefreshButtons />
       </div>
 
       {/* Hero stats */}

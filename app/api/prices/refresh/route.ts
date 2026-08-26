@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { fetchBatchPrices } from '@/lib/yahoo-finance';
 
 export const maxDuration = 60;
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   try {
     const holdings = await prisma.holding.findMany({
       select: { id: true, yahooSymbol: true, quantity: true, bookValue: true },
@@ -31,8 +31,11 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    const origin = new URL(req.url).origin;
-    return NextResponse.redirect(new URL('/', origin));
+    return NextResponse.json({
+      message: `Refreshed ${updated} of ${symbols.length} price${symbols.length === 1 ? '' : 's'}`,
+      updated,
+      total: symbols.length,
+    });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: 'Failed to refresh prices' }, { status: 500 });
