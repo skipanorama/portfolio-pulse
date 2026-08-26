@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Upload, FileText, X, Plus, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn, getYahooSymbol } from '@/lib/utils';
+import { extractPdfText } from '@/lib/pdf-extract';
 
 interface ParsedHolding {
   symbol: string;
@@ -64,11 +65,13 @@ export default function ImportPage() {
     setError('');
     setParsed(null);
 
-    const form = new FormData();
-    form.append('file', file);
-
     try {
-      const res = await fetch('/api/import', { method: 'POST', body: form });
+      const text = await extractPdfText(file);
+      const res = await fetch('/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
       if (!res.ok) throw new Error(await res.text());
       const data: ParseResult = await res.json();
       setParsed(data);
