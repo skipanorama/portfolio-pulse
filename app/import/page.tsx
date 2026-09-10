@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Upload, FileText, X, Plus, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn, getYahooSymbol } from '@/lib/utils';
-import { extractPdfText, type ExtractedPdf } from '@/lib/pdf-extract';
+import { loadPdf, type ExtractedPdf } from '@/lib/pdf-extract';
 
 interface ParsedHolding {
   symbol: string;
@@ -23,7 +23,22 @@ interface ParseResult {
   holdings: ParsedHolding[];
   broker: string;
   accountName: string;
+  /** Names of rows the AI reader left out (no ticker symbol or no quantity). */
+  skipped?: string[];
+  /** True when the PDF had no text layer and was read with AI vision. */
+  viaAi?: boolean;
 }
+
+interface OcrPageResult {
+  pageNumber: number;
+  broker: string | null;
+  accountName: string | null;
+  holdings: ParsedHolding[];
+  skipped: string[];
+}
+
+/** Below this many characters of extractable text we treat the PDF as a scan. */
+const SCANNED_TEXT_THRESHOLD = 40;
 
 interface Portfolio {
   id: number;
@@ -49,6 +64,7 @@ export default function ImportPage() {
   const [extracted, setExtracted] = useState<ExtractedPdf | null>(null);
   const [showExtracted, setShowExtracted] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [parsingMessage, setParsingMessage] = useState('Parsing PDF…');
 
   // Manual entry form state
   const [showManual, setShowManual] = useState(false);
@@ -67,29 +83,89 @@ export default function ImportPage() {
       return;
     }
     setStatus('parsing');
+    setParsingMessage('Reading PDF…');
     setError('');
     setParsed(null);
     setExtracted(null);
     setShowExtracted(false);
     setCopied(false);
 
+    let pdf: Awaited<ReturnType<typeof loadPdf>> | null = null;
     try {
-      const pdf = await extractPdfText(file);
-      setExtracted(pdf);
-      const { text } = pdf;
-      const res = await fetch('/api/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data: ParseResult = await res.json();
+      pdf = await loadPdf(file);
+      const text = await pdf.extractText();
+      setExtracted({ text, pageCount: pdf.pageCount });
+
+      let data: ParseResult;
+
+      if (text.trim().length >= SCANNED_TEXT_THRESHOLD) {
+        // Text-based PDF: parse the text layer with the broker-specific parsers.
+        const res = await fetch('/api/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        data = await res.json();
+      } else {
+        // Scanned PDF (no text layer): rasterize each page and have the AI read it.
+        const total = pdf.pageCount;
+        let done = 0;
+        setParsingMessage(`Scanned PDF — reading ${total} page${total === 1 ? '' : 's'} with AI…`);
+
+        const currentPdf = pdf;
+        const pages = await Promise.all(
+          Array.from({ length: total }, (_, i) => i + 1).map(async pageNumber => {
+            const image = await currentPdf.renderPage(pageNumber);
+            const res = await fetch('/api/import/ocr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                image: image.base64,
+                mediaType: image.mediaType,
+                pageNumber,
+                pageCount: total,
+              }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => null);
+              throw new Error(err?.error ?? `Page ${pageNumber}: server returned ${res.status}`);
+            }
+            const result: OcrPageResult = await res.json();
+            done += 1;
+            setParsingMessage(`Read ${done} of ${total} page${total === 1 ? '' : 's'} with AI…`);
+            return result;
+          })
+        );
+
+        pages.sort((a, b) => a.pageNumber - b.pageNumber);
+        const seen = new Set<string>();
+        const holdings = pages
+          .flatMap(p => p.holdings)
+          .filter(h => {
+            const key = `${h.symbol}|${h.quantity}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+
+        data = {
+          holdings,
+          broker: pages.find(p => p.broker)?.broker ?? 'Unknown',
+          accountName: pages.find(p => p.accountName)?.accountName ?? 'Imported Portfolio',
+          skipped: pages.flatMap(p => p.skipped),
+          viaAi: true,
+        };
+      }
+
       setParsed(data);
       setNewPortfolioName(data.accountName);
       setStatus('parsed');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Parse failed');
       setStatus('error');
+    } finally {
+      await pdf?.destroy().catch(() => {});
     }
   }, []);
 
@@ -224,7 +300,7 @@ export default function ImportPage() {
         {status === 'parsing' ? (
           <div className="flex flex-col items-center gap-3">
             <Loader2 size={40} className="text-blue-400 animate-spin" />
-            <p className="text-slate-400">Parsing PDF…</p>
+            <p className="text-slate-400">{parsingMessage}</p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3">
@@ -233,7 +309,7 @@ export default function ImportPage() {
             </div>
             <div>
               <p className="text-slate-200 font-medium">Drop your PDF here</p>
-              <p className="text-slate-500 text-sm mt-1">or click to browse · Scotia iTrade and Edward Jones supported</p>
+              <p className="text-slate-500 text-sm mt-1">or click to browse · Scotia iTrade and Edward Jones statements · scanned PDFs are read with AI</p>
             </div>
           </div>
         )}
@@ -262,9 +338,15 @@ export default function ImportPage() {
           {extracted && (
             <>
               <p className="text-xs text-slate-500">
-                Extracted {extracted.text.length.toLocaleString()} characters from {extracted.pageCount} page{extracted.pageCount === 1 ? '' : 's'}.
-                {extracted.text.trim().length === 0 && ' This PDF contains no selectable text — it is probably a scanned image.'}
+                {parsed.viaAi
+                  ? `This PDF has no selectable text, so its ${extracted.pageCount} page${extracted.pageCount === 1 ? ' was' : 's were'} read with AI, which found no holdings.`
+                  : `Extracted ${extracted.text.length.toLocaleString()} characters from ${extracted.pageCount} page${extracted.pageCount === 1 ? '' : 's'}.`}
               </p>
+              {parsed.skipped && parsed.skipped.length > 0 && (
+                <p className="text-xs text-slate-500">
+                  Rows left out because they show no ticker symbol or quantity: {parsed.skipped.join(', ')}
+                </p>
+              )}
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setShowExtracted(!showExtracted)}
@@ -373,9 +455,14 @@ export default function ImportPage() {
               <h3 className="text-sm font-semibold text-white">
                 {parsed.holdings.length} Holdings Detected
               </h3>
-              <span className="text-xs text-slate-500">· {parsed.broker}</span>
+              <span className="text-xs text-slate-500">· {parsed.broker}{parsed.viaAi ? ' · read with AI — please verify the numbers' : ''}</span>
             </div>
           </div>
+          {parsed.skipped && parsed.skipped.length > 0 && (
+            <p className="text-xs text-slate-500 mb-4">
+              Left out (no ticker symbol or quantity shown): {parsed.skipped.join(', ')}. Add them manually below if needed.
+            </p>
+          )}
 
           {/* Holdings preview table */}
           <div className="overflow-x-auto rounded-xl border border-[hsl(222,47%,16%)] mb-6">

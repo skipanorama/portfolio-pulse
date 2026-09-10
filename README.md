@@ -16,6 +16,17 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Environment variables
+
+Set these in `.env` locally and in the Vercel project settings for deployments:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection string used by Prisma. |
+| `CRON_SECRET` | Shared secret checked by the `/api/cron/*` routes. |
+| `NEXT_PUBLIC_APP_URL` | Public base URL of the app. |
+| `ANTHROPIC_API_KEY` | Enables importing **scanned** (image-only) PDF statements: each page is rendered in the browser and read by Claude vision via `/api/import/ocr`. Text-based PDFs are parsed without it. |
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

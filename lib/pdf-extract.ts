@@ -1,4 +1,4 @@
-import type { TextItem } from 'pdfjs-dist/types/src/display/api';
+import type { PDFDocumentProxy, TextItem } from 'pdfjs-dist/types/src/display/api';
 
 const Y_TOLERANCE = 2;
 
@@ -45,19 +45,26 @@ export interface ExtractedPdf {
   pageCount: number;
 }
 
-export async function extractPdfText(file: File): Promise<ExtractedPdf> {
-  polyfillReadableStreamAsyncIterator();
+export interface RenderedPage {
+  pageNumber: number;
+  /** Base64 JPEG data, without a `data:` URL prefix. */
+  base64: string;
+  mediaType: 'image/jpeg';
+}
 
-  // Loaded dynamically so this browser-only module (it references DOM APIs
-  // like DOMMatrix at import time) never gets pulled into server rendering.
-  // The legacy build is used (rather than the default modern build) for
-  // compatibility with older Safari/iOS versions.
-  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+export interface LoadedPdf {
+  pageCount: number;
+  /** Reconstructs the text layer, one visual row per line. Empty for scanned PDFs. */
+  extractText(): Promise<string>;
+  /** Rasterizes a page to a JPEG sized for vision models (~1568px on the long edge). */
+  renderPage(pageNumber: number): Promise<RenderedPage>;
+  destroy(): Promise<void>;
+}
 
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+const RENDER_LONG_EDGE_PX = 1568;
+const JPEG_QUALITY = 0.85;
 
+async function extractTextFromDocument(pdf: PDFDocumentProxy): Promise<string> {
   const pageTexts: string[] = [];
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -85,5 +92,52 @@ export async function extractPdfText(file: File): Promise<ExtractedPdf> {
     pageTexts.push(rows.map(row => row.join(' ')).join('\n'));
   }
 
-  return { text: pageTexts.join('\n'), pageCount: pdf.numPages };
+  return pageTexts.join('\n');
+}
+
+async function renderPageToJpeg(pdf: PDFDocumentProxy, pageNumber: number): Promise<RenderedPage> {
+  const page = await pdf.getPage(pageNumber);
+  const baseViewport = page.getViewport({ scale: 1 });
+  const scale = RENDER_LONG_EDGE_PX / Math.max(baseViewport.width, baseViewport.height);
+  const viewport = page.getViewport({ scale });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+
+  // `intent: 'print'` renders synchronously-scheduled; the default 'display'
+  // intent paces work with requestAnimationFrame, which never fires in a
+  // hidden/background tab and would leave this promise hanging.
+  await page.render({ canvas, viewport, intent: 'print' }).promise;
+
+  const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+  canvas.width = 0;
+  canvas.height = 0;
+
+  return {
+    pageNumber,
+    base64: dataUrl.slice(dataUrl.indexOf(',') + 1),
+    mediaType: 'image/jpeg',
+  };
+}
+
+export async function loadPdf(file: File): Promise<LoadedPdf> {
+  polyfillReadableStreamAsyncIterator();
+
+  // Loaded dynamically so this browser-only module (it references DOM APIs
+  // like DOMMatrix at import time) never gets pulled into server rendering.
+  // The legacy build is used (rather than the default modern build) for
+  // compatibility with older Safari/iOS versions.
+  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  return {
+    pageCount: pdf.numPages,
+    extractText: () => extractTextFromDocument(pdf),
+    renderPage: pageNumber => renderPageToJpeg(pdf, pageNumber),
+    destroy: () => pdf.loadingTask.destroy(),
+  };
 }
