@@ -40,7 +40,12 @@ function polyfillReadableStreamAsyncIterator() {
   proto[Symbol.asyncIterator] = proto.values;
 }
 
-export async function extractPdfText(file: File): Promise<string> {
+export interface ExtractedPdf {
+  text: string;
+  pageCount: number;
+}
+
+export async function extractPdfText(file: File): Promise<ExtractedPdf> {
   polyfillReadableStreamAsyncIterator();
 
   // Loaded dynamically so this browser-only module (it references DOM APIs
@@ -80,5 +85,5 @@ export async function extractPdfText(file: File): Promise<string> {
     pageTexts.push(rows.map(row => row.join(' ')).join('\n'));
   }
 
-  return pageTexts.join('\n');
+  return { text: pageTexts.join('\n'), pageCount: pdf.numPages };
 }

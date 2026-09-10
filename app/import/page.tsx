@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Upload, FileText, X, Plus, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn, getYahooSymbol } from '@/lib/utils';
-import { extractPdfText } from '@/lib/pdf-extract';
+import { extractPdfText, type ExtractedPdf } from '@/lib/pdf-extract';
 
 interface ParsedHolding {
   symbol: string;
@@ -45,6 +45,11 @@ export default function ImportPage() {
   const [newPortfolioName, setNewPortfolioName] = useState('');
   const [createNew, setCreateNew] = useState(false);
 
+  // Diagnostics for PDFs where nothing was recognized
+  const [extracted, setExtracted] = useState<ExtractedPdf | null>(null);
+  const [showExtracted, setShowExtracted] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   // Manual entry form state
   const [showManual, setShowManual] = useState(false);
   const [manual, setManual] = useState({
@@ -57,16 +62,21 @@ export default function ImportPage() {
   }, []);
 
   const handleFile = useCallback(async (file: File) => {
-    if (!file.name.endsWith('.pdf')) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
       setError('Please upload a PDF file');
       return;
     }
     setStatus('parsing');
     setError('');
     setParsed(null);
+    setExtracted(null);
+    setShowExtracted(false);
+    setCopied(false);
 
     try {
-      const text = await extractPdfText(file);
+      const pdf = await extractPdfText(file);
+      setExtracted(pdf);
+      const { text } = pdf;
       const res = await fetch('/api/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -234,6 +244,59 @@ export default function ImportPage() {
         <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
           <AlertCircle size={14} />
           {error}
+        </div>
+      )}
+
+      {/* Nothing recognized in the PDF */}
+      {status === 'parsed' && parsed && parsed.holdings.length === 0 && (
+        <div className="glass-card rounded-2xl p-5 space-y-3">
+          <div className="flex items-start gap-2 text-amber-300 text-sm">
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <p>
+              No holdings were recognized in this PDF
+              {parsed.broker !== 'Unknown'
+                ? ` (detected broker: ${parsed.broker}).`
+                : ' (broker not recognized — no "Edward Jones" or "Scotia iTrade" text found).'}
+            </p>
+          </div>
+          {extracted && (
+            <>
+              <p className="text-xs text-slate-500">
+                Extracted {extracted.text.length.toLocaleString()} characters from {extracted.pageCount} page{extracted.pageCount === 1 ? '' : 's'}.
+                {extracted.text.trim().length === 0 && ' This PDF contains no selectable text — it is probably a scanned image.'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setShowExtracted(!showExtracted)}
+                  className="px-3 py-1.5 text-xs font-medium text-slate-300 bg-[hsl(222,47%,14%)] border border-[hsl(222,47%,20%)] rounded-lg hover:bg-[hsl(222,47%,18%)] transition-colors"
+                >
+                  {showExtracted ? 'Hide extracted text' : 'Show extracted text'}
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(extracted.text);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    } catch {
+                      setShowExtracted(true);
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-300 bg-blue-500/10 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors"
+                >
+                  {copied ? 'Copied!' : 'Copy extracted text'}
+                </button>
+              </div>
+              {showExtracted && (
+                <textarea
+                  readOnly
+                  value={extracted.text}
+                  rows={14}
+                  className="w-full px-3 py-2 text-[11px] font-mono leading-snug bg-[hsl(222,47%,9%)] border border-[hsl(222,47%,16%)] rounded-xl text-slate-300 focus:outline-none"
+                />
+              )}
+            </>
+          )}
         </div>
       )}
 
